@@ -305,6 +305,7 @@ size_t SSD1306Ascii::write(uint8_t ch) {
   uint8_t count = readFontByte(m_font + FONT_CHAR_COUNT);
   const uint8_t* base = m_font + FONT_WIDTH_TABLE;
 
+  bool fakeSpace = false;
   if (ch < first || ch >= (first + count)) {
     if (ch == '\r') {
       setCol(0);
@@ -333,25 +334,31 @@ size_t SSD1306Ascii::write(uint8_t ch) {
 #endif  // INCLUDE_SCROLLING
       return 1;
     }
-    return 0;
+
+    ch = ' ';
+    fakeSpace = true;
   }
+
   ch -= first;
   uint8_t s = letterSpacing();
   uint8_t thieleShift = 0;
-  if (fontSize() < 2) {
-    // Fixed width font.
-    base += nr*w*ch;
-  } else {
-    if (h & 7) {
-      thieleShift = 8 - (h & 7);
+  if (!fakeSpace) {
+    if (fontSize() < 2) {
+      // Fixed width font.
+      base += nr*w*ch;
+    } else {
+      if (h & 7) {
+        thieleShift = 8 - (h & 7);
+      }
+      uint16_t index = 0;
+      for (uint8_t i = 0; i < ch; i++) {
+        index += readFontByte(base + i);
+      }
+      w = readFontByte(base + ch);
+      base += nr*index + count;
     }
-    uint16_t index = 0;
-    for (uint8_t i = 0; i < ch; i++) {
-      index += readFontByte(base + i);
-    }
-    w = readFontByte(base + ch);
-    base += nr*index + count;
   }
+
   uint8_t scol = m_col;
   uint8_t srow = m_row;
   uint8_t skip = m_skip;
@@ -362,14 +369,19 @@ size_t SSD1306Ascii::write(uint8_t ch) {
         setCursor(scol, m_row + 1);
       }
       for (uint8_t c = 0; c < w; c++) {
-        uint8_t b = readFontByte(base + c + r*w);
+        uint8_t b = fakeSpace ? 0 : readFontByte(base + c + r*w);
         if (thieleShift && (r + 1) == nr) {
           b >>= thieleShift;
         }
         if (m_magFactor == 2) {
-           b = m ?  b >> 4 : b & 0XF;
-           b = readFontByte(scaledNibble + b);
-           ssd1306WriteRamBuf(b);
+          if (fakeSpace) {
+            b = 0;
+            ssd1306WriteRamBuf(b);
+          } else {
+            b = m ?  b >> 4 : b & 0XF;
+            b = readFontByte(scaledNibble + b);
+            ssd1306WriteRamBuf(b);
+          }
         }
         ssd1306WriteRamBuf(b);
       }
